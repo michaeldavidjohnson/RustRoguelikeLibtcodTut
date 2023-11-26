@@ -12,7 +12,7 @@ use roomgen::Rect;
 use tcod::colors::*;
 use tcod::console::*;
 use tcod::input::Key;
-use tcod::input::KeyCode::*;
+
 use tile::Tile;
 
 const SCREEN_WIDTH: i32 = 80;
@@ -174,7 +174,7 @@ fn main() {
         .init();
 
     let mut player = object::Object::new(25, 23, '@', WHITE);
-    let mut map = make_map(&mut player);
+    let map = make_map(&mut player);
     let game = Game { map: map };
 
     let npc = object::Object::new(SCREEN_WIDTH / 2 - 5, SCREEN_HEIGHT / 2, '@', YELLOW);
@@ -184,8 +184,8 @@ fn main() {
     let mut tcod = Tcod { root, con };
     tcod::system::set_fps(FPS);
 
-    let mut player_x = SCREEN_WIDTH / 2;
-    let mut player_y = SCREEN_HEIGHT / 2;
+    let _player_x = SCREEN_WIDTH / 2;
+    let _player_y = SCREEN_HEIGHT / 2;
 
     while !tcod.root.window_closed() {
         tcod.con.clear();
