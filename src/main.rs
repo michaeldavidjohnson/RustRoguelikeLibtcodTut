@@ -36,6 +36,11 @@ struct Tcod {
     con: Offscreen,
 }
 
+fn make_empty_map() -> Map {
+    let mut map = vec![vec![Tile::empty();MAP_HEIGHT as usize]; MAP_WIDTH as usize];
+    map
+}
+
 fn make_map(player: &mut object::Object) -> Map {
     let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
     //let room1 = Rect::new(20,15,10,15);
