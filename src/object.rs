@@ -20,6 +20,11 @@ impl Object {
         }
     }
 
+    pub fn set_pos(&mut self, x:i32, y:i32) {
+        self.x = x;
+        self.y = y;
+    }
+
     pub fn move_by(&mut self, dx: i32, dy: i32, game: &game::Game) {
         if !game.map[(self.x + dx) as usize][(self.y + dy) as usize].blocked {
             self.x += dx;

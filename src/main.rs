@@ -3,12 +3,14 @@ mod object;
 mod roomgen;
 mod test;
 mod tile;
+use core::num;
 use std::cmp;
 
 use game::Game;
 use object::Object;
 use rand::Rng;
 use roomgen::Rect;
+use tcod::colors;
 use tcod::colors::*;
 use tcod::console::*;
 use tcod::input::Key;
@@ -18,6 +20,7 @@ use tile::Tile;
 
 const SCREEN_WIDTH: i32 = 80;
 type Map = Vec<Vec<tile::Tile>>;
+const MAX_ROOM_MONSTERS: i32 = 4;
 const SCREEN_HEIGHT: i32 = 50;
 const MAP_WIDTH: i32 = 80;
 const MAP_HEIGHT: i32 = 45;
@@ -51,12 +54,27 @@ struct Tcod {
     fov: FovMap,
 }
 
+fn place_objects(room: &Rect, objects: &mut Vec<Object>) {
+    let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS + 1);
+    for _ in 0..num_monsters {
+        let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+        let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+        let mut monster = if rand::random::<f32>() < 0.8 {
+            Object::new(x,y,'o',colors::DESATURATED_GREEN) //orc
+        } else {
+            Object::new(x,y,'T', colors::DARKER_GREEN) //troll
+        };
+
+        objects.push(monster);
+    }
+}
+
 fn make_empty_map() -> Map {
     let mut map = vec![vec![Tile::empty(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
     map
 }
 
-fn make_map(player: &mut object::Object) -> Map {
+fn make_map(objects: &mut Vec<Object>) -> Map {
     let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
     //let room1 = Rect::new(20,15,10,15);
     //let room2 = Rect::new(50,15,10,15);
@@ -77,9 +95,9 @@ fn make_map(player: &mut object::Object) -> Map {
         if !failed {
             let (new_x, new_y) = new_room.center();
             create_room(new_room.clone(), &mut map);
+            place_objects(&new_room, objects);
             if rooms.is_empty() {
-                player.x = new_x;
-                player.y = new_y;
+                objects[0].set_pos(new_x, new_y)
             } else {
                 let (prev_x, prev_y) = rooms[rooms.len() - 1].center();
                 if rand::random() {
@@ -215,11 +233,9 @@ fn main() {
         .init();
 
     let mut player = object::Object::new(25, 23, '@', WHITE);
-    let map = make_map(&mut player);
+    let mut objects = vec![player];
+    let map = make_map(&mut objects);
     let mut game = Game { map: map };
-
-    let npc = object::Object::new(SCREEN_WIDTH / 2 - 5, SCREEN_HEIGHT / 2, '@', YELLOW);
-    let mut objects = [player, npc];
 
     let con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
     let fov = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
