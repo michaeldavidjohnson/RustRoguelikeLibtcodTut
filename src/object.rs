@@ -1,6 +1,6 @@
 use tcod::{Color, Console};
 
-use crate::game;
+use crate::{game, is_blocked, Map};
 
 #[derive(Debug)]
 pub struct Object {
@@ -8,28 +8,39 @@ pub struct Object {
     pub y: i32,
     pub char: char,
     pub color: Color,
+    pub name: String,
+    pub blocks_motion: bool,
+    pub is_alive: bool,
 }
 
 impl Object {
-    pub fn new(x: i32, y: i32, char: char, color: Color) -> Self {
+    pub fn new(
+        x: i32,
+        y: i32,
+        char: char,
+        color: Color,
+        name: String,
+        blocks_motion: bool,
+        is_alive: bool,
+    ) -> Self {
         Object {
             x: x,
             y: y,
             char: char,
             color: color,
+            name: name,
+            blocks_motion: blocks_motion,
+            is_alive: is_alive,
         }
     }
 
-    pub fn set_pos(&mut self, x:i32, y:i32) {
+    pub fn pos(&self) -> (i32, i32) {
+        (self.x, self.y)
+    }
+
+    pub fn set_pos(&mut self, x: i32, y: i32) {
         self.x = x;
         self.y = y;
-    }
-
-    pub fn move_by(&mut self, dx: i32, dy: i32, game: &game::Game) {
-        if !game.map[(self.x + dx) as usize][(self.y + dy) as usize].blocked {
-            self.x += dx;
-            self.y += dy;
-        }
     }
 
     pub fn draw(&self, con: &mut dyn Console) {
