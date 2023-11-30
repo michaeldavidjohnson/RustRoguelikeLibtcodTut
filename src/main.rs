@@ -1,3 +1,5 @@
+mod ai;
+mod components;
 mod game;
 mod object;
 mod roomgen;
@@ -17,6 +19,8 @@ use tcod::input::Key;
 
 use tcod::map::{FovAlgorithm, Map as FovMap};
 use tile::Tile;
+
+use crate::components::Fighter;
 
 const SCREEN_WIDTH: i32 = 80;
 type Map = Vec<Vec<tile::Tile>>;
@@ -70,6 +74,28 @@ pub fn is_blocked(x: i32, y: i32, map: &Map, objects: &[Object]) -> bool {
         .any(|object| object.blocks_motion && object.pos() == (x, y))
 }
 
+/// Mutably borrow two *separate* elements from the given slice.
+/// Panics when the indexes are equal or out of bounds.
+fn mut_two<T>(first_index: usize, second_index: usize, items: &mut [T]) -> (&mut T, &mut T) {
+    assert!(first_index != second_index);
+    let split_at_index = cmp::max(first_index, second_index);
+    let (first_slice, second_slice) = items.split_at_mut(split_at_index);
+    if first_index < second_index {
+        (&mut first_slice[first_index], &mut second_slice[0])
+    } else {
+        (&mut second_slice[0], &mut first_slice[second_index])
+    }
+}
+
+fn move_towards(id: usize, target_x: i32, target_y: i32, game: &Game, objects: &mut [Object]) {
+    let dx = target_x - objects[id].x;
+    let dy = target_y - objects[id].y;
+    let distance = ((dx.pow(2) + dy.pow(2)) as f32).sqrt();
+    let dx = (dx as f32 / distance).round() as i32;
+    let dy = (dy as f32 / distance).round() as i32;
+    move_by(id, dx, dy, game, objects)
+}
+
 pub fn player_move_or_attack(
     id: usize,
     dx: i32,
@@ -81,10 +107,13 @@ pub fn player_move_or_attack(
     x = x + dx;
     y = y + dy;
 
-    let target_id = objects.iter().position(|object| object.pos() == (x, y));
+    let target_id = objects
+        .iter()
+        .position(|object| object.pos() == (x, y) && object.fighter.is_some());
     match target_id {
         Some(target_id) => {
-            println!("The {:?} cringes!", objects[target_id].name);
+            let (player, target) = mut_two(0, target_id, objects);
+            player.attack(target);
         }
         None => move_by(id, dx, dy, game, objects),
     }
@@ -104,7 +133,7 @@ fn place_objects(room: &Rect, objects: &mut Vec<Object>, game: &game::Game) {
         let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
         if is_blocked(x, y, &game.map, objects) {
             let mut monster = if rand::random::<f32>() < 0.8 {
-                Object::new(
+                let mut orc = Object::new(
                     x,
                     y,
                     'o',
@@ -112,9 +141,18 @@ fn place_objects(room: &Rect, objects: &mut Vec<Object>, game: &game::Game) {
                     "Orc".to_string(),
                     true,
                     true,
-                ) //orc
+                );
+                orc.ai = Some(components::Ai::Basic);
+                orc.fighter = Some(Fighter {
+                    max_hp: 10,
+                    hp: 10,
+                    defense: 0,
+                    power: 3,
+                    on_death: components::DeathCallback::Monster,
+                });
+                orc
             } else {
-                Object::new(
+                let mut troll = Object::new(
                     x,
                     y,
                     'T',
@@ -122,7 +160,16 @@ fn place_objects(room: &Rect, objects: &mut Vec<Object>, game: &game::Game) {
                     "Troll".to_string(),
                     true,
                     true,
-                ) //troll
+                ); //troll
+                troll.ai = Some(components::Ai::Basic);
+                troll.fighter = Some(Fighter {
+                    max_hp: 16,
+                    hp: 16,
+                    defense: 1,
+                    power: 4,
+                    on_death: components::DeathCallback::Monster,
+                });
+                troll
             };
 
             objects.push(monster);
@@ -209,7 +256,13 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recomput
         );
     }
 
-    for object in objects {
+    let mut to_draw: Vec<_> = objects
+        .iter()
+        .filter(|o| tcod.fov.is_in_fov(o.x, o.y))
+        .collect();
+    to_draw.sort_by(|o1, o2| o1.blocks_motion.cmp(&o2.blocks_motion));
+    println!("{:?}", to_draw);
+    for object in to_draw {
         if tcod.fov.is_in_fov(object.x, object.y) {
             object.draw(&mut tcod.con);
         }
@@ -245,6 +298,17 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recomput
         1.0,
         1.0,
     );
+
+    tcod.root.set_default_foreground(WHITE);
+    if let Some(fighter) = objects[0].fighter {
+        tcod.root.print_ex(
+            1,
+            SCREEN_HEIGHT - 2,
+            BackgroundFlag::None,
+            TextAlignment::Left,
+            fighter.hp.to_string(),
+        );
+    }
 }
 
 fn handle_keys(
@@ -339,7 +403,14 @@ fn main() {
         .title("Tutorial")
         .init();
 
-    let mut player = object::Object::new(25, 23, '@', WHITE, "me".to_string(), false, true);
+    let mut player = object::Object::new(25, 23, '@', WHITE, "me".to_string(), true, true);
+    player.fighter = Some(Fighter {
+        max_hp: 30,
+        hp: 30,
+        defense: 2,
+        power: 5,
+        on_death: components::DeathCallback::Player,
+    });
     let mut objects = vec![player];
     let map = make_map(&mut objects);
     let mut game = Game { map: map };
@@ -376,9 +447,9 @@ fn main() {
         let exit = handle_keys(&mut tcod, 0, &mut objects, &game);
 
         if objects[0].is_alive && exit != PlayerAction::DidntTakeTurn {
-            for object in &objects {
-                if (object as *const _) != (&objects[0] as *const _) {
-                    println!("The {:?} does something", object.name);
+            for id in 0..objects.len() {
+                if objects[id].ai.is_some() {
+                    ai::ai_take_turn(id, &tcod, &game, &mut objects)
                 }
             }
         }
