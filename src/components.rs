@@ -16,6 +16,11 @@ pub enum Ai {
     Basic,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum Item {
+    Heal,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DeathCallback {
     Player,

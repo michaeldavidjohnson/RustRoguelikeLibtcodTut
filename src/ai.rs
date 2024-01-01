@@ -1,6 +1,6 @@
 use crate::{game::Game, move_towards, mut_two, object::Object, Tcod};
 
-pub fn ai_take_turn(monster_id: usize, tcod: &Tcod, game: &mut Game, objects: &mut [Object]) {
+pub fn ai_take_turn(monster_id: usize, tcod: &Tcod, game: &mut Game, objects: &mut Vec<Object>) {
     let (monster_x, monster_y) = objects[monster_id].pos();
     if tcod.fov.is_in_fov(monster_x, monster_y) {
         if objects[monster_id].distance_to(&objects[0]) >= 2.0 {

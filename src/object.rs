@@ -17,6 +17,7 @@ pub struct Object {
     pub is_alive: bool,
     pub fighter: Option<components::Fighter>,
     pub ai: Option<components::Ai>,
+    pub item: Option<components::Item>,
 }
 
 impl Object {
@@ -39,6 +40,7 @@ impl Object {
             is_alive: is_alive,
             fighter: None,
             ai: None,
+            item: None,
         }
     }
 

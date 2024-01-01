@@ -1,6 +1,7 @@
 mod ai;
 mod components;
 mod game;
+mod inventory;
 mod messages;
 mod object;
 mod roomgen;
@@ -10,7 +11,9 @@ mod tile;
 use core::num;
 use std::cmp;
 
+use components::Item;
 use game::Game;
+use inventory::inventory_menu;
 use object::Object;
 use rand::Rng;
 use roomgen::Rect;
@@ -35,6 +38,8 @@ const PANEL_HEIGHT: i32 = 7;
 const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
 type Map = Vec<Vec<tile::Tile>>;
 const MAX_ROOM_MONSTERS: i32 = 4;
+const MAX_ROOM_ITEMS: i32 = 3;
+const INVENTORY_WIDTH: i32 = 50;
 const SCREEN_HEIGHT: i32 = 50;
 const MAP_WIDTH: i32 = 80;
 const MAP_HEIGHT: i32 = 43;
@@ -78,7 +83,7 @@ enum PlayerAction {
     Exit,
 }
 
-pub fn is_blocked(x: i32, y: i32, map: &Map, objects: &[Object]) -> bool {
+pub fn is_blocked(x: i32, y: i32, map: &Map, objects: &Vec<Object>) -> bool {
     if map[x as usize][y as usize].blocked {
         return true;
     };
@@ -100,7 +105,7 @@ fn mut_two<T>(first_index: usize, second_index: usize, items: &mut [T]) -> (&mut
     }
 }
 
-fn move_towards(id: usize, target_x: i32, target_y: i32, game: &Game, objects: &mut [Object]) {
+fn move_towards(id: usize, target_x: i32, target_y: i32, game: &Game, objects: &mut Vec<Object>) {
     let dx = target_x - objects[id].x;
     let dy = target_y - objects[id].y;
     let distance = ((dx.pow(2) + dy.pow(2)) as f32).sqrt();
@@ -109,12 +114,29 @@ fn move_towards(id: usize, target_x: i32, target_y: i32, game: &Game, objects: &
     move_by(id, dx, dy, game, objects)
 }
 
+pub fn pick_item_up(object_id: usize, game: &mut Game, objects: &mut Vec<Object>) {
+    if game.inventory.len() >= 26 {
+        game.messages.add(
+            format!(
+                "The inventory is full, cannot pick up {}.",
+                objects[object_id].name
+            ),
+            RED,
+        );
+    } else {
+        let item = objects.swap_remove(object_id);
+        game.messages
+            .add(format!("You picked up a {}!", item.name), GREEN);
+        game.inventory.push(item);
+    }
+}
+
 pub fn player_move_or_attack(
     id: usize,
     dx: i32,
     dy: i32,
     game: &mut game::Game,
-    objects: &mut [Object],
+    objects: &mut Vec<Object>,
 ) {
     let (mut x, mut y) = objects[id].pos();
     x = x + dx;
@@ -145,7 +167,7 @@ fn get_names_under_mouse(mouse: Mouse, objects: &[Object], fov_map: &FovMap) -> 
     names.join(", ") // join the names, separated by commas
 }
 
-pub fn move_by(id: usize, dx: i32, dy: i32, game: &game::Game, objects: &mut [Object]) {
+pub fn move_by(id: usize, dx: i32, dy: i32, game: &game::Game, objects: &mut Vec<Object>) {
     let (x, y) = objects[id].pos();
     if !is_blocked(x + dx, y + dy, &game.map, objects) {
         objects[id].set_pos(x + dx, y + dy);
@@ -201,6 +223,26 @@ fn place_objects(room: &Rect, objects: &mut Vec<Object>, game: &game::Game) {
             objects.push(monster);
         }
     }
+
+    let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
+    for _ in 0..num_items {
+        let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+        let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+
+        if is_blocked(x, y, &game.map, objects) {
+            let mut object = Object::new(
+                x,
+                y,
+                '!',
+                VIOLET,
+                "Potion of Healing".to_string(),
+                false,
+                true,
+            );
+            object.item = Some(Item::Heal);
+            objects.push(object);
+        }
+    }
 }
 
 fn make_empty_map() -> Map {
@@ -213,6 +255,7 @@ fn make_map(objects: &mut Vec<Object>) -> Map {
     let game = Game {
         map: map.clone(),
         messages: Messages::new(),
+        inventory: vec![],
     };
     //let room1 = Rect::new(20,15,10,15);
     //let room2 = Rect::new(50,15,10,15);
@@ -378,7 +421,7 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recomput
 fn handle_keys(
     tcod: &mut Tcod,
     player_id: usize,
-    objects: &mut [Object],
+    objects: &mut Vec<Object>,
     game: &mut Game,
 ) -> PlayerAction {
     let player_alive = objects[player_id].is_alive;
@@ -448,18 +491,50 @@ fn handle_keys(
             player_move_or_attack(player_id, 1, 0, game, objects);
             return PlayerAction::TookTurn;
         }
+        (
+            Key {
+                code: tcod::input::KeyCode::Text,
+                ..
+            },
+            "g",
+            true,
+        ) => {
+            let item_id = objects
+                .iter()
+                .position(|object| object.pos() == objects[0].pos() && object.item.is_some());
+            if let Some(item_id) = item_id {
+                pick_item_up(item_id, game, objects);
+            }
+            return PlayerAction::DidntTakeTurn;
+        }
+        (
+            Key {
+                code: tcod::input::KeyCode::Text,
+                ..
+            },
+            "i",
+            true,
+        ) => {
+            // show the inventory
+            inventory_menu(
+                &game.inventory,
+                "Press the key next to an item to use it, or any other to cancel.\n",
+                &mut tcod.root,
+            );
+            return PlayerAction::TookTurn;
+        }
+
         _ => {
             return PlayerAction::DidntTakeTurn;
         }
     }
-    return PlayerAction::DidntTakeTurn;
 }
 
 fn main() {
     //map[30][22] = Tile::wall();
     //map[33][24] = Tile::wall();
 
-    let root = Root::initializer()
+    let mut root = Root::initializer()
         .font("./resources/arial10x10.png", FontLayout::Tcod)
         .font_type(FontType::Greyscale)
         .size(SCREEN_WIDTH, SCREEN_HEIGHT)
@@ -479,6 +554,7 @@ fn main() {
     let mut game = Game {
         map: map,
         messages: Messages::new(),
+        inventory: vec![],
     };
 
     let con = Offscreen::new(MAP_WIDTH, MAP_HEIGHT);
